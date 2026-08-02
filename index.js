@@ -57,7 +57,7 @@ function daysLeftInAugust() {
 // --- Scheduled messages (all times in TZ set above) ---
 
 // 4:45 AM - Wake up
-cron.schedule('45 4 * * *', () => {
+cron.schedule('46 23 * * *', () => {
   send(`⏰ 4:45 AM. Wake up.\n${daysLeftInAugust()} days left in August to hit $10k. Let's go.`);
 }, { timezone: TZ });
 
