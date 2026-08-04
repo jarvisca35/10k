@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const cron = require('node-cron');
+const { quotes, bibleVerses, workouts, mondayChecklist, dailyChecklist } = require('./data');
 
 const TOKEN = process.env.BOT_TOKEN;
 const CHAT_ID = process.env.CHAT_ID;
@@ -10,7 +11,8 @@ if (!TOKEN || !CHAT_ID) {
   process.exit(1);
 }
 
-const bot = new TelegramBot(TOKEN, { polling: false });
+// Polling is on so the bot can respond to commands, not just push scheduled messages
+const bot = new TelegramBot(TOKEN, { polling: true });
 
 function send(message) {
   bot.sendMessage(CHAT_ID, message).catch((err) => {
@@ -18,33 +20,12 @@ function send(message) {
   });
 }
 
-// --- Gym split by day ---
-const gymSplit = {
-  1: 'Chest + Triceps', // Monday
-  2: 'Back + Biceps',   // Tuesday
-  3: 'Legs',            // Wednesday
-  4: 'Shoulders + Abs', // Thursday
-  5: 'Upper Body',      // Friday
-  6: 'Cardio (or rest)',// Saturday
-  0: 'Rest',            // Sunday
-};
+function randomFrom(list) {
+  return list[Math.floor(Math.random() * list.length)];
+}
 
-// --- Motivational quotes ---
-const quotes = [
-  'Discipline is choosing between what you want now and what you want most.',
-  'Motivation gets you started. Discipline keeps you going.',
-  "You won't always be motivated, so you must learn to be disciplined.",
-  'Small daily improvements are the key to staggering long-term results.',
-  'The pain of discipline weighs ounces; the pain of regret weighs tons.',
-  'Do something today that your future self will thank you for.',
-  'No one is going to hand you the life you want. You have to build it.',
-  'Consistency is what transforms average into excellence.',
-  'You don\'t have to be extreme, just consistent.',
-  'Focus on the goal, not the obstacles in front of it.',
-];
-
-function randomQuote() {
-  return quotes[Math.floor(Math.random() * quotes.length)];
+function todayIndex() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: TZ })).getDay();
 }
 
 function daysLeftInAugust() {
@@ -54,11 +35,23 @@ function daysLeftInAugust() {
   return Math.max(diff, 0);
 }
 
-// --- Scheduled messages (all times in TZ set above) ---
+function formatWorkout(dayIndex) {
+  const w = workouts[dayIndex];
+  return `🏋️ Today's split: ${w.title}\n` + w.exercises.map((e) => `• ${e}`).join('\n');
+}
+
+function formatChecklist(items, header) {
+  return `${header}\n` + items.map((i) => `☐ ${i}`).join('\n');
+}
+
+const rulesText =
+  '🎯 Prop Account Rules:\n$1,500 total profit target\nNo single day above 50% of total profit\nStay consistent, stay disciplined.';
+
+// ============ SCHEDULED MESSAGES ============
 
 // 4:45 AM - Wake up
 cron.schedule('45 4 * * *', () => {
-  send(`⏰ 4:45 AM. Wake up.\n${daysLeftInAugust()} days left in August to hit $10k. Let's go.`);
+  send(`⏰ 4:45 AM. Wake up.\n${daysLeftInAugust()} days left in August to hit $10k. 2 jobs, trading, gym — let's get it.`);
 }, { timezone: TZ });
 
 // 5:00 AM - Breakfast
@@ -73,30 +66,22 @@ cron.schedule('20 5 * * *', () => {
 
 // 6:00 AM - Motivational quote
 cron.schedule('0 6 * * *', () => {
-  send(`💬 ${randomQuote()}`);
+  send(`💬 ${randomFrom(quotes)}`);
 }, { timezone: TZ });
 
-// Monday 6:30 AM - Special checklist (in addition to normal Monday messages)
+// 12:00 PM - Bible verse (midday lift during work)
+cron.schedule('0 12 * * *', () => {
+  send(`🙏 ${randomFrom(bibleVerses)}`);
+}, { timezone: TZ });
+
+// Monday 6:30 AM - One-time weekly setup checklist
 cron.schedule('30 6 * * 1', () => {
-  send(
-    '📋 Monday Checklist:\n' +
-    '☐ Gym membership\n' +
-    '☐ Groceries\n' +
-    '☐ Meal prep containers\n' +
-    '☐ Food scale\n' +
-    '☐ Prep 5 breakfasts\n' +
-    '☐ Prep 5 dinners\n' +
-    '☐ Fill water bottle\n' +
-    '☐ Lay out work clothes\n' +
-    '☐ Review trading plan before bed'
-  );
+  send(formatChecklist(mondayChecklist, '📋 Monday Setup Checklist:'));
 }, { timezone: TZ });
 
-// 4:30 PM - Gym reminder with today's split
+// 4:30 PM - Gym reminder with today's actual exercises
 cron.schedule('30 16 * * *', () => {
-  const day = new Date(new Date().toLocaleString('en-US', { timeZone: TZ })).getDay();
-  const split = gymSplit[day];
-  send(`🏋️ 4:30 PM. Gym time — today's split: ${split}.`);
+  send(`🏋️ 4:30 PM. Gym time.\n\n${formatWorkout(todayIndex())}`);
 }, { timezone: TZ });
 
 // 5:45 PM - Dinner
@@ -104,9 +89,9 @@ cron.schedule('45 17 * * *', () => {
   send('🍽️ 5:45 PM. Dinner — from your prep, not a shortcut.');
 }, { timezone: TZ });
 
-// 6:30 PM - Trading review
+// 6:30 PM - Trading review + account rules reminder
 cron.schedule('30 18 * * *', () => {
-  send('📈 6:30 PM. Trading review time.');
+  send(`📈 6:30 PM. Trading review time.\n${rulesText}`);
 }, { timezone: TZ });
 
 // 7:30 PM - Read
@@ -114,12 +99,64 @@ cron.schedule('30 19 * * *', () => {
   send('📖 7:30 PM. Reading time.');
 }, { timezone: TZ });
 
+// 8:00 PM - Daily discipline checklist
+cron.schedule('0 20 * * *', () => {
+  send(formatChecklist(dailyChecklist, '✅ Daily Checklist:'));
+}, { timezone: TZ });
+
 // 9:00 PM - Sleep
 cron.schedule('0 21 * * *', () => {
   send('🌙 9:00 PM. Wind down and get to sleep. Tomorrow depends on tonight.');
 }, { timezone: TZ });
 
-console.log(`10k bot running. Timezone: ${TZ}`);
+// ============ ON-DEMAND COMMANDS ============
+// Only responds to your own chat ID, so a leaked bot token can't be used
+// by a stranger to trigger commands.
 
-// Keep-alive log so hosting platforms see the process as healthy
-setInterval(() => {}, 1000 * 60 * 60);
+function isOwner(msg) {
+  return String(msg.chat.id) === String(CHAT_ID);
+}
+
+bot.onText(/\/quote/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, `💬 ${randomFrom(quotes)}`);
+});
+
+bot.onText(/\/verse/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, `🙏 ${randomFrom(bibleVerses)}`);
+});
+
+bot.onText(/\/workout/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, formatWorkout(todayIndex()));
+});
+
+bot.onText(/\/checklist/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, formatChecklist(dailyChecklist, '✅ Daily Checklist:'));
+});
+
+bot.onText(/\/rules/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, rulesText);
+});
+
+bot.onText(/\/goal/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(msg.chat.id, `🎯 ${daysLeftInAugust()} days left in August to hit $10k.`);
+});
+
+bot.onText(/\/help/, (msg) => {
+  if (!isOwner(msg)) return;
+  bot.sendMessage(
+    msg.chat.id,
+    '🤖 Commands:\n/quote — random motivational quote\n/verse — random Bible verse\n/workout — today\'s gym plan\n/checklist — daily checklist\n/rules — trading account rules\n/goal — days left in August'
+  );
+});
+
+bot.on('polling_error', (err) => {
+  console.error('Polling error:', err.message);
+});
+
+console.log(`10k bot running. Timezone: ${TZ}`);
